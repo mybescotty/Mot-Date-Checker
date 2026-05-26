@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MOT Date Checker</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; }
+    .hidden { display: none !important; }
+
+    /* ── App shell ── */
+    .app-shell { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar { width: 230px; min-width: 230px; background: #0f172a; display: flex; flex-direction: column; overflow-y: auto; }
+    .sidebar-header { padding: 20px 16px; border-bottom: 1px solid #1e3a5f; }
+    .sidebar-header h1 { color: #f1f5f9; font-size: 1rem; font-weight: 700; }
+    .sidebar-header p { color: #64748b; font-size: 0.73rem; margin-top: 4px; }
+    .sidebar-nav { padding: 8px 0; flex: 1; }
+    .depot-btn { width: 100%; text-align: left; padding: 10px 16px; border: none; background: transparent;
+      color: #94a3b8; cursor: pointer; font-size: 0.84rem; border-left: 3px solid transparent;
+      transition: all 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .depot-btn:hover { background: #1e293b; color: #e2e8f0; }
+    .depot-btn.active { background: #1e3a5f; color: #fff; border-left-color: #3b82f6; font-weight: 600; }
+
+    /* ── Main content ── */
+    .main-content { flex: 1; overflow-y: auto; padding: 24px; background: #f8fafc; }
+    .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    .content-header h2 { font-size: 1.4rem; font-weight: 700; color: #0f172a; }
+
+    /* ── Buttons ── */
+    .btn-primary { padding: 10px 24px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { padding: 8px 16px; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; color: #475569; cursor: pointer; font-size: 0.85rem; transition: background 0.15s; }
+    .btn-secondary:hover { background: #f1f5f9; }
+    .past-toggle-btn { padding: 8px 16px; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; color: #475569; cursor: pointer; font-size: 0.85rem; margin-bottom: 12px; }
+    .past-toggle-btn:hover { background: #f1f5f9; }
+
+    /* ── Upload area ── */
+    .upload-area { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; padding: 24px; }
+    .upload-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 8px; text-align: center; }
+    .upload-sub { color: #64748b; margin-bottom: 36px; text-align: center; font-size: 1rem; }
+    .drop-zone { border: 2px dashed #3b82f6; border-radius: 16px; padding: 56px 40px; text-align: center;
+      background: #fff; max-width: 480px; width: 100%; transition: all 0.2s; cursor: pointer;
+      box-shadow: 0 4px 24px rgba(59,130,246,0.08); }
+    .drop-zone.drag-over { background: #eff6ff; border-color: #1d4ed8; transform: scale(1.01); }
+    .drop-zone-icon { font-size: 3.5rem; margin-bottom: 16px; }
+    .drop-zone h2 { font-size: 1.15rem; font-weight: 600; color: #1e293b; margin-bottom: 8px; }
+    .drop-zone p { color: #64748b; font-size: 0.88rem; margin-bottom: 24px; }
+
+    /* ── Summary cards ── */
+    .cards-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+    .card { background: #fff; border-radius: 10px; padding: 20px; flex: 1; min-width: 130px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07); border-top: 4px solid #e2e8f0; }
+    .card--overdue { border-top-color: #ef4444; }
+    .card--week   { border-top-color: #f97316; }
+    .card--month  { border-top-color: #eab308; }
+    .card__value { font-size: 2.1rem; font-weight: 800; color: #0f172a; line-height: 1; }
+    .card__label { font-size: 0.78rem; color: #64748b; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+    /* ── Status badges ── */
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 0.71rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    .badge--overdue  { background: #fef2f2; color: #dc2626; }
+    .badge--week     { background: #fff7ed; color: #ea580c; }
+    .badge--month    { background: #fefce8; color: #ca8a04; }
+    .badge--upcoming { background: #f0fdf4; color: #16a34a; }
+
+    /* ── Table ── */
+    .table-section { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+    .section-title { font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .mot-table { width: 100%; border-collapse: collapse; }
+    .mot-table th { background: #f1f5f9; text-align: left; padding: 10px 12px; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 1px solid #e2e8f0; }
+    .mot-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.87rem; vertical-align: middle; }
+    .mot-table tr:last-child td { border-bottom: none; }
+    .mot-table tr:hover td { background: #fafbfc; }
+    .desc-text { color: #64748b; font-size: 0.79rem; }
+    .empty-msg { color: #94a3b8; font-size: 0.9rem; text-align: center; padding: 28px; }
+
+    /* ── Chart ── */
+    .chart-section { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+    .chart-wrapper { position: relative; height: 300px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .app-shell { flex-direction: column; height: auto; }
+      .sidebar { width: 100%; min-width: 100%; height: auto; }
+      .sidebar-nav { display: flex; overflow-x: auto; padding: 4px 8px; gap: 4px; }
+      .depot-btn { white-space: nowrap; flex-shrink: 0; width: auto; border-left: none; border-bottom: 3px solid transparent; }
+      .depot-btn.active { border-left-color: transparent; border-bottom-color: #3b82f6; }
+      .main-content { padding: 16px; }
+      .cards-row { gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══ Upload screen ══ -->
+  <div id="upload-area" class="upload-area">
+    <h1 class="upload-title">🚌 MOT Date Checker</h1>
+    <p class="upload-sub">Upload your fleet Excel file to view MOT dates by depot</p>
+    <div id="drop-zone" class="drop-zone">
+      <div class="drop-zone-icon">📂</div>
+      <h2>Drop your Excel file here</h2>
+      <p>Supports .xlsx and .xls files exported from your fleet management system</p>
+      <button id="upload-btn" class="btn-primary">Browse File</button>
+    </div>
+    <p style="margin-top:16px;color:#94a3b8;font-size:0.8rem;">Columns used: A (Fleet No), B (Description), E (Depot), K (MOT Date)</p>
+  </div>
+
+  <!-- ══ Main app shell (hidden until file loaded) ══ -->
+  <div id="app-shell" class="app-shell hidden">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>🚌 MOT Tracker</h1>
+        <p id="vehicle-count">0 vehicles loaded</p>
+      </div>
+      <nav id="depot-nav" class="sidebar-nav"></nav>
+    </aside>
+
+    <!-- Main panel -->
+    <main class="main-content">
+
+      <!-- Header row -->
+      <div class="content-header">
+        <h2 id="depot-title">All Depots</h2>
+        <button class="btn-secondary" onclick="resetUpload()">⬆ Upload New File</button>
+      </div>
+
+      <!-- Summary cards -->
+      <div class="cards-row">
+        <div class="card">
+          <div class="card__value" id="stat-total">0</div>
+          <div class="card__label">Total Vehicles</div>
+        </div>
+        <div class="card card--overdue">
+          <div class="card__value" id="stat-overdue">0</div>
+          <div class="card__label">Overdue</div>
+        </div>
+        <div class="card card--week">
+          <div class="card__value" id="stat-week">0</div>
+          <div class="card__label">Due This Week</div>
+        </div>
+        <div class="card card--month">
+          <div class="card__value" id="stat-month">0</div>
+          <div class="card__label">Due This Month</div>
+        </div>
+      </div>
+
+      <!-- Weekly chart -->
+      <div class="chart-section">
+        <div class="section-title">MOTs Due Per Week — Next 12 Weeks</div>
+        <div class="chart-wrapper">
+          <canvas id="weeklyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Upcoming MOTs table -->
+      <div class="table-section">
+        <div class="section-title">Upcoming &amp; Overdue MOTs</div>
+        <div id="main-table"></div>
+      </div>
+
+      <!-- Past MOTs (collapsible) -->
+      <div class="table-section">
+        <button id="past-toggle" class="past-toggle-btn" onclick="togglePastSection()">▶ Show Past MOTs</button>
+        <div id="past-section" class="hidden">
+          <div class="section-title">Past MOTs (already expired)</div>
+          <div id="past-table"></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none">
+
+  <script>
+    /* ══════════════════════════════════════════
+       §1 — Constants & global state
+    ══════════════════════════════════════════ */
+    const COL_FLEET      = 0;   // Column A
+    const COL_DESC       = 1;   // Column B
+    const COL_DEPOT_NAME = 4;   // Column E  (SAP Plant Desc)
+    const COL_DEPOT_CODE = 5;   // Column F
+    const COL_MOT_DATE   = 10;  // Column K
+
+    const STATUS_OVERDUE  = 'overdue';
+    const STATUS_WEEK     = 'week';
+    const STATUS_MONTH    = 'month';
+    const STATUS_UPCOMING = 'upcoming';
+    const DEPOT_ALL       = '__ALL__';
+
+    const BADGE_LABELS = {
+      [STATUS_OVERDUE]:  'Overdue',
+      [STATUS_WEEK]:     'Due This Week',
+      [STATUS_MONTH]:    'Due This Month',
+      [STATUS_UPCOMING]: 'Upcoming'
+    };
+
+    const CHART_COLOURS = [
+      '#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6',
+      '#f97316','#06b6d4','#84cc16','#ec4899','#14b8a6',
+      '#f43f5e','#6366f1','#a78bfa','#fb923c','#34d399'
+    ];
+
+    let _allVehicles  = [];
+    let _depotNames   = [];
+    let _depotMap     = new Map();
+    let _activeDepot  = DEPOT_ALL;
+    let _motChart     = null;
+    let _pastRendered = false;
+
+    /* ══════════════════════════════════════════
+       §2 — Date & status utilities
+    ══════════════════════════════════════════ */
+    function getToday() {
+      const t = new Date();
+      t.setHours(0, 0, 0, 0);
+      return t;
+    }
+
+    function parseExcelDate(val) {
+      if (val === null || val === undefined || val === '') return null;
+      if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+      if (typeof val === 'number') {
+        // Excel serial → JS timestamp (25569 = days between 1900-01-00 and 1970-01-01)
+        const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+        return isNaN(d.getTime()) ? null : d;
+      }
+      if (typeof val === 'string') {
+        const s = val.trim();
+        // DD/MM/YYYY
+        const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (dmy) {
+          const d = new Date(+dmy[3], +dmy[2] - 1, +dmy[1]);
+          return isNaN(d.getTime()) ? null : d;
+        }
+        // YYYY-MM-DD
+        const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) {
+          const d = new Date(+iso[1], +iso[2] - 1, +iso[3]);
+          return isNaN(d.getTime()) ? null : d;
+        }
+        // Fallback native parse
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      return null;
+    }
+
+    function getStatus(date, today) {
+      const diff = date - today;
+      if (diff < 0) return STATUS_OVERDUE;
+      const days = diff / 86400000;
+      if (days <= 7)  return STATUS_WEEK;
+      if (days <= 30) return STATUS_MONTH;
+      return STATUS_UPCOMING;
+    }
+
+    function weekStarting(date) {
+      const d = new Date(date);
+      const day = d.getDay(); // 0=Sun
+      const offset = day === 0 ? -6 : 1 - day;
+      d.setDate(d.getDate() + offset);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    function formatWeekLabel(d) {
+      return 'w/c ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+
+    function formatDate(d) {
+      if (!d) return '—';
+      return d.toLocaleDateString('en-GB');
+    }
+
+    /* ══════════════════════════════════════════
+       §3 — Excel parsing
+    ══════════════════════════════════════════ */
+    function parseSheet(workbook) {
+      const ws = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // Detect true header row (some exports have a title above the column headers)
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(10, rows.length); i++) {
+        const joined = rows[i].join(' ').toUpperCase();
+        if (joined.includes('MOT') || joined.includes('FLEET') || joined.includes('PLANT')) {
+          headerIdx = i;
+          break;
+        }
+      }
+      return rows.slice(headerIdx + 1);
+    }
+
+    function processRows(rows) {
+      const today = getToday();
+      const vehicles = [];
+      const depotSet = new Set();
+
+      for (const row of rows) {
+        const fleet = String(row[COL_FLEET] || '').trim();
+        if (!fleet) continue;
+
+        const motDate = parseExcelDate(row[COL_MOT_DATE]);
+        if (!motDate) continue;
+
+        const depotName = String(row[COL_DEPOT_NAME] || '').trim() || 'Unknown Depot';
+
+        vehicles.push({
+          fleet:     fleet,
+          desc:      String(row[COL_DESC] || '').trim(),
+          depotName: depotName,
+          depotCode: String(row[COL_DEPOT_CODE] || '').trim(),
+          motDate:   motDate,
+          status:    getStatus(motDate, today)
+        });
+        depotSet.add(depotName);
+      }
+
+      vehicles.sort((a, b) => a.motDate - b.motDate);
+      const depotNames = Array.from(depotSet).sort();
+      return { vehicles, depotNames };
+    }
+
+    function groupByDepot(vehicles) {
+      const map = new Map();
+      for (const v of vehicles) {
+        if (!map.has(v.depotName)) map.set(v.depotName, []);
+        map.get(v.depotName).push(v);
+      }
+      return map;
+    }
+
+    /* ══════════════════════════════════════════
+       §4 — Chart builder
+    ══════════════════════════════════════════ */
+    function buildWeeklyChartData(vehicles, depotNames) {
+      const today = getToday();
+      const anchor = weekStarting(today);
+      const weeks = [];
+      const labels = [];
+      for (let i = 0; i < 12; i++) {
+        const ws = new Date(anchor);
+        ws.setDate(anchor.getDate() + i * 7);
+        weeks.push(ws.getTime());
+        labels.push(formatWeekLabel(ws));
+      }
+
+      const datasets = depotNames.map((depot, idx) => {
+        const data = new Array(12).fill(0);
+        const dvehicles = vehicles.filter(v => v.depotName === depot && v.status !== STATUS_OVERDUE);
+        for (const v of dvehicles) {
+          const wt = weekStarting(v.motDate).getTime();
+          const slot = weeks.indexOf(wt);
+          if (slot >= 0) data[slot]++;
+        }
+        return {
+          label: depot,
+          data,
+          backgroundColor: CHART_COLOURS[idx % CHART_COLOURS.length],
+          stack: 'stack0'
+        };
+      });
+
+      return { labels, datasets };
+    }
+
+    function renderChart(vehicles, depotNames) {
+      if (_motChart) { _motChart.destroy(); _motChart = null; }
+      const chartData = buildWeeklyChartData(vehicles, depotNames);
+      const ctx = document.getElementById('weeklyChart').getContext('2d');
+      _motChart = new Chart(ctx, {
+        type: 'bar',
+        data: chartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 10, font: { size: 11 } } },
+            tooltip: { mode: 'index', intersect: false }
+          },
+          scales: {
+            x: { stacked: true, grid: { color: '#e2e8f0' }, ticks: { font: { size: 11 } } },
+            y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
+          }
+        }
+      });
+    }
+
+    /* ══════════════════════════════════════════
+       §5 — Tab & table renderers
+    ══════════════════════════════════════════ */
+    function renderDepotTabs(activeDepot) {
+      const nav = document.getElementById('depot-nav');
+      const allClass = activeDepot === DEPOT_ALL ? ' active' : '';
+      let html = `<button class="depot-btn${allClass}" onclick="selectDepot('${DEPOT_ALL}')">All Depots</button>`;
+      for (const depot of _depotNames) {
+        const cls = activeDepot === depot ? ' active' : '';
+        const safe = depot.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        html += `<button class="depot-btn${cls}" title="${depot}" onclick="selectDepot('${safe}')">${depot}</button>`;
+      }
+      nav.innerHTML = html;
+    }
+
+    function renderSummaryCards(vehicles) {
+      document.getElementById('stat-total').textContent   = vehicles.length;
+      document.getElementById('stat-overdue').textContent = vehicles.filter(v => v.status === STATUS_OVERDUE).length;
+      document.getElementById('stat-week').textContent    = vehicles.filter(v => v.status === STATUS_WEEK).length;
+      document.getElementById('stat-month').textContent   = vehicles.filter(v => v.status === STATUS_MONTH).length;
+    }
+
+    function renderTable(vehicles, containerId) {
+      const el = document.getElementById(containerId);
+      if (!vehicles.length) {
+        el.innerHTML = '<p class="empty-msg">No vehicles to display.</p>';
+        return;
+      }
+      let html = '<table class="mot-table"><thead><tr>'
+        + '<th>Fleet / Vehicle</th><th>Depot</th><th>MOT Due Date</th><th>Status</th>'
+        + '</tr></thead><tbody>';
+      for (const v of vehicles) {
+        html += `<tr>
+          <td><strong>${v.fleet}</strong><br><span class="desc-text">${v.desc}</span></td>
+          <td>${v.depotName}</td>
+          <td>${formatDate(v.motDate)}</td>
+          <td><span class="badge badge--${v.status}">${BADGE_LABELS[v.status]}</span></td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+
+    /* ══════════════════════════════════════════
+       §6 — Depot selection & past toggle
+    ══════════════════════════════════════════ */
+    function selectDepot(depotName) {
+      _activeDepot  = depotName;
+      _pastRendered = false;
+
+      // Hide past section when switching
+      document.getElementById('past-section').classList.add('hidden');
+      document.getElementById('past-toggle').textContent = '▶ Show Past MOTs';
+
+      const vehicles   = depotName === DEPOT_ALL ? _allVehicles : _allVehicles.filter(v => v.depotName === depotName);
+      const depotNames = depotName === DEPOT_ALL ? _depotNames  : [depotName];
+      const title      = depotName === DEPOT_ALL ? 'All Depots' : depotName;
+
+      document.getElementById('depot-title').textContent = title;
+      renderDepotTabs(depotName);
+      renderSummaryCards(vehicles);
+
+      // Table: overdue first (sorted desc), then upcoming sorted asc
+      const overdue  = vehicles.filter(v => v.status === STATUS_OVERDUE).sort((a,b) => b.motDate - a.motDate);
+      const upcoming = vehicles.filter(v => v.status !== STATUS_OVERDUE);
+      renderTable([...overdue, ...upcoming], 'main-table');
+      renderChart(vehicles, depotNames);
+    }
+
+    function togglePastSection() {
+      const section = document.getElementById('past-section');
+      const btn     = document.getElementById('past-toggle');
+      if (section.classList.contains('hidden')) {
+        section.classList.remove('hidden');
+        btn.textContent = '▼ Hide Past MOTs';
+        if (!_pastRendered) {
+          const vehicles = _activeDepot === DEPOT_ALL ? _allVehicles : _allVehicles.filter(v => v.depotName === _activeDepot);
+          const past = vehicles.filter(v => v.status === STATUS_OVERDUE).sort((a,b) => b.motDate - a.motDate);
+          renderTable(past, 'past-table');
+          _pastRendered = true;
+        }
+      } else {
+        section.classList.add('hidden');
+        btn.textContent = '▶ Show Past MOTs';
+      }
+    }
+
+    /* ══════════════════════════════════════════
+       §7 — File handling & init
+    ══════════════════════════════════════════ */
+    function resetUpload() {
+      if (_motChart) { _motChart.destroy(); _motChart = null; }
+      _allVehicles = []; _depotNames = []; _depotMap = new Map();
+      _activeDepot = DEPOT_ALL; _pastRendered = false;
+      document.getElementById('upload-area').classList.remove('hidden');
+      document.getElementById('app-shell').classList.add('hidden');
+    }
+
+    function handleFile(file) {
+      if (!file) return;
+      if (!file.name.match(/\.(xlsx|xls)$/i)) {
+        alert('Please upload an Excel file (.xlsx or .xls)');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const wb   = XLSX.read(data, { type: 'array', cellDates: true });
+          const rows = parseSheet(wb);
+          const result = processRows(rows);
+          _allVehicles = result.vehicles;
+          _depotNames  = result.depotNames;
+          _depotMap    = groupByDepot(_allVehicles);
+          document.getElementById('vehicle-count').textContent = _allVehicles.length + ' vehicles loaded';
+          document.getElementById('upload-area').classList.add('hidden');
+          document.getElementById('app-shell').classList.remove('hidden');
+          selectDepot(DEPOT_ALL);
+        } catch (err) {
+          alert('Error reading file: ' + err.message);
+          console.error(err);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function initUpload() {
+      const fileInput = document.getElementById('file-input');
+      const dropZone  = document.getElementById('drop-zone');
+      const uploadBtn = document.getElementById('upload-btn');
+
+      uploadBtn.addEventListener('click', () => fileInput.click());
+      dropZone.addEventListener('click', (e) => { if (e.target !== uploadBtn) fileInput.click(); });
+      fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); fileInput.value = ''; });
+
+      dropZone.addEventListener('dragover',  (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop',      (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+    }
+
+    document.addEventListener('DOMContentLoaded', initUpload);
+
+  </script>
+</body>
+</html>
