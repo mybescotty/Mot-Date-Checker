@@ -495,8 +495,7 @@
       const depots   = _activeDepot === DEPOT_ALL ? _depotNames  : [_activeDepot];
       const today    = formatDate(getToday());
 
-      const SEP  = '='.repeat(62);
-      const LINE = '-'.repeat(62);
+      const LINE = '-'.repeat(64);
 
       // ── Subject ──
       const subject = 'MOT Summary — ' + scope + ' — ' + today;
@@ -504,43 +503,41 @@
       // ── Header ──
       let body = 'MOT SUMMARY REPORT\r\n';
       body += 'Generated: ' + today + '  |  Scope: ' + scope + '\r\n';
-      body += SEP + '\r\n\r\n';
+      body += LINE + '\r\n\r\n';
 
-      // ── Depot breakdown table ──
+      // ── Depot breakdown — pipe-delimited so columns are clear in any font ──
       body += 'DEPOT BREAKDOWN\r\n' + LINE + '\r\n';
-      body += 'Depot'.padEnd(32) + 'Overdue'.padStart(8) + 'This Wk'.padStart(8) + 'This Mo'.padStart(8) + 'Total'.padStart(7) + '\r\n';
-      body += LINE + '\r\n';
+      body += 'Depot'.padEnd(30) + ' | Overdue | This Wk | This Mo |  Total\r\n';
+      body += '-'.repeat(30) + '-+---------+---------+---------+-------\r\n';
       for (const depot of depots) {
         const dv      = vehicles.filter(v => v.depotName === depot);
         const overdue = dv.filter(v => v.status === STATUS_OVERDUE).length;
         const week    = dv.filter(v => v.status === STATUS_WEEK).length;
         const month   = dv.filter(v => v.status === STATUS_MONTH).length;
-        const name    = depot.length > 31 ? depot.substring(0, 28) + '...' : depot;
-        body += name.padEnd(32)
-          + String(overdue).padStart(8)
-          + String(week).padStart(8)
-          + String(month).padStart(8)
-          + String(dv.length).padStart(7) + '\r\n';
+        const name    = depot.length > 29 ? depot.substring(0, 26) + '...' : depot;
+        body += name.padEnd(30)
+          + ' | ' + String(overdue).padStart(7)
+          + ' | ' + String(week).padStart(7)
+          + ' | ' + String(month).padStart(7)
+          + ' | ' + String(dv.length).padStart(5) + '\r\n';
       }
       body += '\r\n';
 
-      // ── Next 10 upcoming MOTs ──
+      // ── Next 10 upcoming MOTs — labelled list, no alignment needed ──
       const upcoming = vehicles
         .filter(v => v.status !== STATUS_OVERDUE)
         .slice(0, 10);
+
+      const statusLabel = { [STATUS_WEEK]: 'Due This Week', [STATUS_MONTH]: 'Due This Month', [STATUS_UPCOMING]: 'Upcoming' };
 
       body += 'NEXT 10 UPCOMING MOTs\r\n' + LINE + '\r\n';
       if (upcoming.length === 0) {
         body += 'No upcoming MOTs found.\r\n';
       } else {
         upcoming.forEach((v, i) => {
-          const num    = String(i + 1).padStart(2) + '.';
-          const fleet  = v.fleet.padEnd(8);
-          const desc   = v.desc.substring(0, 12).padEnd(13);
-          const depot  = (v.depotName.length > 22 ? v.depotName.substring(0, 19) + '...' : v.depotName).padEnd(24);
-          const date   = formatDate(v.motDate).padEnd(13);
-          const status = { [STATUS_WEEK]: 'Due This Week', [STATUS_MONTH]: 'Due This Month', [STATUS_UPCOMING]: 'Upcoming' }[v.status] || '';
-          body += num + ' ' + fleet + desc + depot + date + status + '\r\n';
+          const desc = v.desc ? ' (' + v.desc + ')' : '';
+          body += '\r\n ' + (i + 1) + '. Fleet ' + v.fleet + desc + ' — ' + v.depotName + '\r\n';
+          body += '    Due: ' + formatDate(v.motDate) + '  |  ' + (statusLabel[v.status] || '') + '\r\n';
         });
       }
 
