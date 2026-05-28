@@ -79,6 +79,9 @@
     .mot-table tr:hover td { background: #fafbfc; }
     .desc-text { color: #64748b; font-size: 0.79rem; }
     .empty-msg { color: #94a3b8; font-size: 0.9rem; text-align: center; padding: 28px; }
+    .days-overdue { color: #dc2626; font-weight: 700; }
+    .days-soon    { color: #ea580c; font-weight: 700; }
+    .days-month   { color: #ca8a04; font-weight: 600; }
 
     /* ── Chart ── */
     .chart-section { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
@@ -301,29 +304,42 @@
           break;
         }
       }
-      return rows.slice(headerIdx + 1);
+      return { dataRows: rows.slice(headerIdx + 1), headerRow: rows[headerIdx] || [] };
     }
 
-    function processRows(rows) {
+    function detectColumns(headerRow) {
+      const cols = { fleet: COL_FLEET, desc: COL_DESC, depot: COL_DEPOT_NAME, mot: COL_MOT_DATE };
+      headerRow.forEach((cell, i) => {
+        const h = String(cell).toLowerCase().trim();
+        if (h.includes('fleet'))                                 cols.fleet = i;
+        if (h.includes('description') && !h.includes('plant'))  cols.desc  = i;
+        if (h.includes('plant'))                                 cols.depot = i;
+        if (h.includes('mot'))                                   cols.mot   = i;
+      });
+      return cols;
+    }
+
+    function processRows(rows, cols) {
       const today = getToday();
       const vehicles = [];
       const depotSet = new Set();
 
       for (const row of rows) {
-        const fleet = String(row[COL_FLEET] || '').trim();
+        const fleet = String(row[cols.fleet] || '').trim();
         if (!fleet) continue;
 
-        const motDate = parseExcelDate(row[COL_MOT_DATE]);
+        const motDate = parseExcelDate(row[cols.mot]);
         if (!motDate) continue;
 
-        const depotName = String(row[COL_DEPOT_NAME] || '').trim() || 'Unknown Depot';
+        const depotName = String(row[cols.depot] || '').trim() || 'Unknown Depot';
+        const daysLeft  = Math.round((motDate - today) / 86400000);
 
         vehicles.push({
           fleet:     fleet,
-          desc:      String(row[COL_DESC] || '').trim(),
+          desc:      String(row[cols.desc] || '').trim(),
           depotName: depotName,
-          depotCode: String(row[COL_DEPOT_CODE] || '').trim(),
           motDate:   motDate,
+          daysLeft:  daysLeft,
           status:    getStatus(motDate, today)
         });
         depotSet.add(depotName);
@@ -427,14 +443,18 @@
         el.innerHTML = '<p class="empty-msg">No vehicles to display.</p>';
         return;
       }
+      const daysClass = { [STATUS_OVERDUE]: 'days-overdue', [STATUS_WEEK]: 'days-soon', [STATUS_MONTH]: 'days-month', [STATUS_UPCOMING]: '' };
       let html = '<table class="mot-table"><thead><tr>'
-        + '<th>Fleet / Vehicle</th><th>Depot</th><th>MOT Due Date</th><th>Status</th>'
+        + '<th>Fleet / Vehicle</th><th>Depot</th><th>MOT Due Date</th><th>Days Left</th><th>Status</th>'
         + '</tr></thead><tbody>';
       for (const v of vehicles) {
+        const dl   = v.daysLeft;
+        const dlTxt = dl < 0 ? Math.abs(dl) + ' days ago' : dl + ' days';
         html += `<tr>
           <td><strong>${v.fleet}</strong><br><span class="desc-text">${v.desc}</span></td>
           <td>${v.depotName}</td>
           <td>${formatDate(v.motDate)}</td>
+          <td class="${daysClass[v.status]}">${dlTxt}</td>
           <td><span class="badge badge--${v.status}">${BADGE_LABELS[v.status]}</span></td>
         </tr>`;
       }
@@ -569,8 +589,9 @@
         try {
           const data = new Uint8Array(e.target.result);
           const wb   = XLSX.read(data, { type: 'array', cellDates: true });
-          const rows = parseSheet(wb);
-          const result = processRows(rows);
+          const { dataRows, headerRow } = parseSheet(wb);
+          const cols   = detectColumns(headerRow);
+          const result = processRows(dataRows, cols);
           _allVehicles = result.vehicles;
           _depotNames  = result.depotNames;
           _depotMap    = groupByDepot(_allVehicles);
